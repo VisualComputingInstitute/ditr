@@ -6,9 +6,14 @@ Please cite our work if the code is helpful to you.
 """
 
 import os
-import numpy as np
-from collections.abc import Sequence
 import pickle
+from collections.abc import Sequence
+
+import imageio.v3 as imageio
+import numpy as np
+import torch
+
+from pointcept.datasets.utils import points2image
 
 from .builder import DATASETS
 from .defaults import DefaultDataset
@@ -16,10 +21,11 @@ from .defaults import DefaultDataset
 
 @DATASETS.register_module()
 class NuScenesDataset(DefaultDataset):
-    def __init__(self, sweeps=10, ignore_index=-1, **kwargs):
+    def __init__(self, sweeps=10, ignore_index=-1, with_images=False, **kwargs):
         self.sweeps = sweeps
         self.ignore_index = ignore_index
         self.learning_map = self.get_learning_map(ignore_index)
+        self.with_images = with_images
         super().__init__(ignore_index=ignore_index, **kwargs)
 
     def get_info_path(self, split):
@@ -80,6 +86,30 @@ class NuScenesDataset(DefaultDataset):
             segment=segment,
             name=self.get_data_name(idx),
         )
+
+        if self.with_images:
+            images = []
+            image_coords = []
+            image_masks = []
+            for cam in data["cams"].values():
+                image_path = os.path.join(self.data_root, "raw", cam["data_path"])
+                images.append(imageio.imread(image_path))
+                K = cam["camera_intrinsics"]
+                cam2points = np.eye(4)
+                cam2points[:3, :3] = cam["sensor2lidar_rotation"]
+                cam2points[:3, 3] = cam["sensor2lidar_translation"]
+                points2cam = np.linalg.inv(cam2points)
+
+                points_image, visibility_mask = points2image(
+                    coord, points2cam, K, images[-1].shape[:2]
+                )
+                image_coords.append(points_image)
+                image_masks.append(visibility_mask)
+
+            data_dict["image"] = np.stack(images, axis=0)  # (CAM, H, W, 3)
+            data_dict["image_coord"] = np.stack(image_coords, axis=1)  # (N, CAM, 2)
+            data_dict["image_mask"] = np.stack(image_masks, axis=1)  # (N, CAM)
+
         return data_dict
 
     def get_data_name(self, idx):

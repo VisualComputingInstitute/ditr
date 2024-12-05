@@ -8,10 +8,11 @@ Please cite our work if the code is helpful to you.
 import os
 import sys
 import weakref
+from functools import partial
+
 import torch
 import torch.nn as nn
 import torch.utils.data
-from functools import partial
 
 if sys.version_info >= (3, 10):
     from collections.abc import Iterator
@@ -19,17 +20,18 @@ else:
     from collections import Iterator
 from tensorboardX import SummaryWriter
 
-from .defaults import create_ddp_model, worker_init_fn
-from .hooks import HookBase, build_hooks
 import pointcept.utils.comm as comm
-from pointcept.datasets import build_dataset, point_collate_fn, collate_fn
+import wandb
+from pointcept.datasets import build_dataset, collate_fn, point_collate_fn
 from pointcept.models import build_model
+from pointcept.utils.events import EventStorage, ExceptionWriter
 from pointcept.utils.logger import get_root_logger
 from pointcept.utils.optimizer import build_optimizer
-from pointcept.utils.scheduler import build_scheduler
-from pointcept.utils.events import EventStorage, ExceptionWriter
 from pointcept.utils.registry import Registry
+from pointcept.utils.scheduler import build_scheduler
 
+from .defaults import create_ddp_model, worker_init_fn
+from .hooks import HookBase, build_hooks
 
 TRAINERS = Registry("trainers")
 
@@ -178,7 +180,7 @@ class Trainer(TrainerBase):
         for key in input_dict.keys():
             if isinstance(input_dict[key], torch.Tensor):
                 input_dict[key] = input_dict[key].cuda(non_blocking=True)
-        with torch.cuda.amp.autocast(enabled=self.cfg.enable_amp):
+        with torch.autocast(device_type="cuda", enabled=self.cfg.enable_amp):
             output_dict = self.model(input_dict)
             loss = output_dict["loss"]
         self.optimizer.zero_grad()
@@ -231,6 +233,12 @@ class Trainer(TrainerBase):
         return model
 
     def build_writer(self):
+        if comm.is_main_process() and self.cfg.wandb_project:
+            wandb.init(
+                project=self.cfg.wandb_project,
+                sync_tensorboard=True,
+                config=dict(self.cfg),
+            )
         writer = SummaryWriter(self.cfg.save_path) if comm.is_main_process() else None
         self.logger.info(f"Tensorboard writer logging dir: {self.cfg.save_path}")
         return writer
@@ -297,7 +305,7 @@ class Trainer(TrainerBase):
         return build_scheduler(self.cfg.scheduler, self.optimizer)
 
     def build_scaler(self):
-        scaler = torch.cuda.amp.GradScaler() if self.cfg.enable_amp else None
+        scaler = torch.amp.GradScaler("cuda") if self.cfg.enable_amp else None
         return scaler
 
 

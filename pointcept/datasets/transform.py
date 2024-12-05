@@ -7,16 +7,19 @@ Author: Xiaoyang Wu (xiaoyang.wu.cs@gmail.com)
 Please cite our work if the code is helpful to you.
 """
 
-import random
-import numbers
-import scipy
-import scipy.ndimage
-import scipy.interpolate
-import scipy.stats
-import numpy as np
-import torch
 import copy
-from collections.abc import Sequence, Mapping
+import numbers
+import random
+from collections.abc import Mapping, Sequence
+
+import albumentations as A
+import numpy as np
+import scipy
+import scipy.interpolate
+import scipy.ndimage
+import scipy.stats
+import torch
+from albumentations.pytorch import ToTensorV2
 
 from pointcept.utils.registry import Registry
 
@@ -70,6 +73,9 @@ class Copy(object):
 
 @TRANSFORMS.register_module()
 class ToTensor(object):
+    def __init__(self):
+        self.image_to_tensor = ToTensorV2()
+
     def __call__(self, data):
         if isinstance(data, torch.Tensor):
             return data
@@ -87,6 +93,10 @@ class ToTensor(object):
         elif isinstance(data, np.ndarray) and np.issubdtype(data.dtype, np.floating):
             return torch.from_numpy(data).float()
         elif isinstance(data, Mapping):
+            if "image" in data.keys():
+                data["image"] = torch.stack(
+                    [self.image_to_tensor(image=im)["image"] for im in data["image"]]
+                ).unsqueeze(0)  # (1, CAM, C, H, W)
             result = {sub_key: self(item) for sub_key, item in data.items()}
             return result
         elif isinstance(data, Sequence):
@@ -215,6 +225,10 @@ class RandomDropout(object):
                 data_dict["segment"] = data_dict["segment"][idx]
             if "instance" in data_dict.keys():
                 data_dict["instance"] = data_dict["instance"][idx]
+            if "image_coord" in data_dict.keys():
+                data_dict["image_coord"] = data_dict["image_coord"][idx]
+            if "image_mask" in data_dict.keys():
+                data_dict["image_mask"] = data_dict["image_mask"][idx]
         return data_dict
 
 
@@ -942,9 +956,10 @@ class SphereCrop(object):
             data_part_list = []
             # coord_list, color_list, dist2_list, idx_list, offset_list = [], [], [], [], []
             if data_dict["coord"].shape[0] > point_max:
-                coord_p, idx_uni = np.random.rand(
-                    data_dict["coord"].shape[0]
-                ) * 1e-3, np.array([])
+                coord_p, idx_uni = (
+                    np.random.rand(data_dict["coord"].shape[0]) * 1e-3,
+                    np.array([]),
+                )
                 while idx_uni.size != data_dict["index"].shape[0]:
                     init_idx = np.argmin(coord_p)
                     dist2 = np.sum(
@@ -968,6 +983,12 @@ class SphereCrop(object):
                         ]
                     if "strength" in data_dict.keys():
                         data_crop_dict["strength"] = data_dict["strength"][idx_crop]
+                    if "image_coord" in data_dict.keys():
+                        data_crop_dict["image_coord"] = data_dict["image_coord"][
+                            idx_crop
+                        ]
+                    if "image_mask" in data_dict.keys():
+                        data_crop_dict["image_mask"] = data_dict["image_mask"][idx_crop]
                     data_crop_dict["weight"] = dist2[idx_crop]
                     data_crop_dict["index"] = data_dict["index"][idx_crop]
                     data_part_list.append(data_crop_dict)
@@ -1016,6 +1037,138 @@ class SphereCrop(object):
                 data_dict["displacement"] = data_dict["displacement"][idx_crop]
             if "strength" in data_dict.keys():
                 data_dict["strength"] = data_dict["strength"][idx_crop]
+            if "image_coord" in data_dict.keys():
+                data_dict["image_coord"] = data_dict["image_coord"][idx_crop]
+            if "image_mask" in data_dict.keys():
+                data_dict["image_mask"] = data_dict["image_mask"][idx_crop]
+        return data_dict
+
+
+@TRANSFORMS.register_module()
+class DistanceCrop(object):
+    def __init__(self, min: float | None = None, max: float | None = None):
+        self.min_distance = min
+        self.max_distance = max
+
+    def __call__(self, data_dict):
+        distance = np.linalg.norm(data_dict["coord"], axis=1)
+        mask = np.ones_like(distance).astype(bool)
+        if self.min_distance is not None:
+            mask &= distance >= self.min_distance
+        if self.max_distance is not None:
+            mask &= distance <= self.max_distance
+        if "coord" in data_dict.keys():
+            data_dict["coord"] = data_dict["coord"][mask]
+        if "origin_coord" in data_dict.keys():
+            data_dict["origin_coord"] = data_dict["origin_coord"][mask]
+        if "grid_coord" in data_dict.keys():
+            data_dict["grid_coord"] = data_dict["grid_coord"][mask]
+        if "color" in data_dict.keys():
+            data_dict["color"] = data_dict["color"][mask]
+        if "normal" in data_dict.keys():
+            data_dict["normal"] = data_dict["normal"][mask]
+        if "segment" in data_dict.keys():
+            data_dict["segment"] = data_dict["segment"][mask]
+        if "instance" in data_dict.keys():
+            data_dict["instance"] = data_dict["instance"][mask]
+        if "displacement" in data_dict.keys():
+            data_dict["displacement"] = data_dict["displacement"][mask]
+        if "strength" in data_dict.keys():
+            data_dict["strength"] = data_dict["strength"][mask]
+        if "image_coord" in data_dict.keys():
+            data_dict["image_coord"] = data_dict["image_coord"][mask]
+        if "image_mask" in data_dict.keys():
+            data_dict["image_mask"] = data_dict["image_mask"][mask]
+        return data_dict
+
+
+@TRANSFORMS.register_module()
+class RemoveInvisible(object):
+    def __call__(self, data_dict):
+        mask = data_dict["image_mask"].any(-1)
+        if "coord" in data_dict.keys():
+            data_dict["coord"] = data_dict["coord"][mask]
+        if "origin_coord" in data_dict.keys():
+            data_dict["origin_coord"] = data_dict["origin_coord"][mask]
+        if "grid_coord" in data_dict.keys():
+            data_dict["grid_coord"] = data_dict["grid_coord"][mask]
+        if "color" in data_dict.keys():
+            data_dict["color"] = data_dict["color"][mask]
+        if "normal" in data_dict.keys():
+            data_dict["normal"] = data_dict["normal"][mask]
+        if "segment" in data_dict.keys():
+            data_dict["segment"] = data_dict["segment"][mask]
+        if "instance" in data_dict.keys():
+            data_dict["instance"] = data_dict["instance"][mask]
+        if "displacement" in data_dict.keys():
+            data_dict["displacement"] = data_dict["displacement"][mask]
+        if "strength" in data_dict.keys():
+            data_dict["strength"] = data_dict["strength"][mask]
+        if "image_coord" in data_dict.keys():
+            data_dict["image_coord"] = data_dict["image_coord"][mask]
+        if "image_mask" in data_dict.keys():
+            data_dict["image_mask"] = data_dict["image_mask"][mask]
+        return data_dict
+
+
+@TRANSFORMS.register_module()
+class RemoveClass(object):
+    def __init__(self, index: int):
+        self.index = index
+
+    def __call__(self, data_dict):
+        mask = data_dict["segment"] != self.index
+        if "coord" in data_dict.keys():
+            data_dict["coord"] = data_dict["coord"][mask]
+        if "origin_coord" in data_dict.keys():
+            data_dict["origin_coord"] = data_dict["origin_coord"][mask]
+        if "grid_coord" in data_dict.keys():
+            data_dict["grid_coord"] = data_dict["grid_coord"][mask]
+        if "color" in data_dict.keys():
+            data_dict["color"] = data_dict["color"][mask]
+        if "normal" in data_dict.keys():
+            data_dict["normal"] = data_dict["normal"][mask]
+        if "segment" in data_dict.keys():
+            data_dict["segment"] = data_dict["segment"][mask]
+        if "instance" in data_dict.keys():
+            data_dict["instance"] = data_dict["instance"][mask]
+        if "displacement" in data_dict.keys():
+            data_dict["displacement"] = data_dict["displacement"][mask]
+        if "strength" in data_dict.keys():
+            data_dict["strength"] = data_dict["strength"][mask]
+        if "image_coord" in data_dict.keys():
+            data_dict["image_coord"] = data_dict["image_coord"][mask]
+        if "image_mask" in data_dict.keys():
+            data_dict["image_mask"] = data_dict["image_mask"][mask]
+        return data_dict
+
+
+@TRANSFORMS.register_module()
+class InvisibleDistance(object):
+    def __init__(self, min: float | None = None, max: float | None = None):
+        self.min_distance = min
+        self.max_distance = max
+
+    def __call__(self, data_dict):
+        distance = np.linalg.norm(data_dict["coord"], axis=1)
+        mask = np.ones_like(distance).astype(bool)
+        if self.min_distance is not None:
+            mask &= distance >= self.min_distance
+        if self.max_distance is not None:
+            mask &= distance <= self.max_distance
+        if "image_mask" in data_dict.keys():
+            data_dict["image_mask"][~mask] = False
+        return data_dict
+
+
+@TRANSFORMS.register_module()
+class InvisibleClass(object):
+    def __init__(self, index: int):
+        self.index = index
+
+    def __call__(self, data_dict):
+        if "image_mask" in data_dict.keys():
+            data_dict["image_mask"][data_dict["segment"] == self.index] = False
         return data_dict
 
 
@@ -1039,6 +1192,10 @@ class ShufflePoint(object):
             data_dict["segment"] = data_dict["segment"][shuffle_index]
         if "instance" in data_dict.keys():
             data_dict["instance"] = data_dict["instance"][shuffle_index]
+        if "image_coord" in data_dict.keys():
+            data_dict["image_coord"] = data_dict["image_coord"][shuffle_index]
+        if "image_mask" in data_dict.keys():
+            data_dict["image_mask"] = data_dict["image_mask"][shuffle_index]
         return data_dict
 
 
@@ -1060,6 +1217,10 @@ class CropBoundary(object):
             data_dict["segment"] = data_dict["segment"][mask]
         if "instance" in data_dict.keys():
             data_dict["instance"] = data_dict["instance"][mask]
+        if "image_coord" in data_dict.keys():
+            data_dict["image_coord"] = data_dict["image_coord"][mask]
+        if "image_mask" in data_dict.keys():
+            data_dict["image_mask"] = data_dict["image_mask"][mask]
         return data_dict
 
 
@@ -1133,6 +1294,132 @@ class InstanceParser(object):
         data_dict["instance_centroid"] = centroid
         data_dict["bbox"] = bbox
         return data_dict
+
+
+class _ImageTransform(object):
+    """
+    Applies an albumentations transform to the image and encodes image_coord
+    as bounding boxes to correctly transform them as well.
+    """
+
+    def __init__(self, transform):
+        self.transform_keypoints = "keypoints" in transform.available_keys
+        self.transform = A.Compose(
+            [transform],
+            keypoint_params=A.KeypointParams(format="xy", remove_invisible=False),
+        )
+
+    def __call__(self, data_dict):
+        if "image" in data_dict.keys():
+            if self.transform_keypoints:
+                transformed = [
+                    self.transform(
+                        image=im,
+                        keypoints=data_dict["image_coord"][:, i][
+                            data_dict["image_mask"][:, i]
+                        ],
+                    )
+                    for i, im in enumerate(data_dict["image"])
+                ]
+                data_dict["image"] = np.stack([t["image"] for t in transformed])
+                for i, t in enumerate(transformed):
+                    data_dict["image_coord"][:, i][data_dict["image_mask"][:, i]] = t[
+                        "keypoints"
+                    ]
+
+                # update mask
+                _, H, W, _ = data_dict["image"].shape
+                data_dict["image_mask"] &= np.all(data_dict["image_coord"] >= 0, axis=2)
+                data_dict["image_mask"] &= data_dict["image_coord"][..., 0] < W
+                data_dict["image_mask"] &= data_dict["image_coord"][..., 1] < H
+            else:
+                data_dict["image"] = np.stack(
+                    [self.transform(image=im)["image"] for im in data_dict["image"]]
+                )
+        return data_dict
+
+
+@TRANSFORMS.register_module()
+class ImageNormalize(_ImageTransform):
+    def __init__(self, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
+        super().__init__(A.Normalize(mean=mean, std=std))
+
+
+@TRANSFORMS.register_module()
+class ImageColorJitter(_ImageTransform):
+    def __init__(
+        self,
+        brightness: float | tuple[float, float] | None = None,
+        contrast: float | tuple[float, float] | None = None,
+        saturation: float | tuple[float, float] | None = None,
+        hue: float | tuple[float, float] | None = None,
+    ):
+        super().__init__(
+            A.ColorJitter(
+                brightness=brightness,
+                contrast=contrast,
+                saturation=saturation,
+                hue=hue,
+            )
+        )
+
+
+@TRANSFORMS.register_module()
+class ImageResize(_ImageTransform):
+    def __init__(self, size: tuple[int, int]):
+        super().__init__(A.Resize(height=size[0], width=size[1]))
+
+
+@TRANSFORMS.register_module()
+class ImageRandomHorizontalFlip(_ImageTransform):
+    def __init__(self, p: float = 0.5):
+        super().__init__(A.HorizontalFlip(p=p))
+
+
+@TRANSFORMS.register_module()
+class ImageCenterCrop(_ImageTransform):
+    def __init__(self, size: tuple[int, int]):
+        super().__init__(A.CenterCrop(height=size[0], width=size[1]))
+
+
+@TRANSFORMS.register_module()
+class ImageRandomCrop(_ImageTransform):
+    def __init__(self, size: tuple[int, int]):
+        super().__init__(A.RandomCrop(height=size[0], width=size[1]))
+
+
+@TRANSFORMS.register_module()
+class ImageRemove(object):
+    def __init__(self, indices: list[int]):
+        self.indices = indices
+
+    def __call__(self, data_dict):
+        if data_dict["image"].shape[0] == len(set(self.indices)):
+            # keep at least one image, set mask to False
+            data_dict["image"] = data_dict["image"][:1]
+            data_dict["image_coord"] = data_dict["image_coord"][:, :1]
+            data_dict["image_mask"] = data_dict["image_mask"][:, :1]
+            data_dict["image_mask"][:] = False
+        else:
+            data_dict["image"] = np.delete(data_dict["image"], self.indices, axis=0)
+            data_dict["image_coord"] = np.delete(
+                data_dict["image_coord"], self.indices, axis=1
+            )
+            data_dict["image_mask"] = np.delete(
+                data_dict["image_mask"], self.indices, axis=1
+            )
+        return data_dict
+
+
+# @TRANSFORMS.register_module()
+# class ImageNormalize(object):
+#     def __init__(self, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
+#         self.transform = v2.Normalize(mean=mean, std=std)
+
+#     def __call__(self, data_dict):
+#         if "image" in data_dict.keys():
+#             data_dict["image"] = self.transform(data_dict["image"])
+#         return data_dict
 
 
 class Compose(object):

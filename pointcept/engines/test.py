@@ -7,26 +7,29 @@ Please cite our work if the code is helpful to you.
 
 import os
 import time
-import numpy as np
 from collections import OrderedDict
+
+import numpy as np
 import torch
 import torch.distributed as dist
+import torch.nn as nn
 import torch.nn.functional as F
+import torch.optim as optim
 import torch.utils.data
 
-from .defaults import create_ddp_model
 import pointcept.utils.comm as comm
 from pointcept.datasets import build_dataset, collate_fn
 from pointcept.models import build_model
 from pointcept.utils.logger import get_root_logger
-from pointcept.utils.registry import Registry
 from pointcept.utils.misc import (
     AverageMeter,
     intersection_and_union,
     intersection_and_union_gpu,
     make_dirs,
 )
+from pointcept.utils.registry import Registry
 
+from .defaults import create_ddp_model
 
 TESTERS = Registry("testers")
 
@@ -178,8 +181,9 @@ class SemSegTester(TesterBase):
                 pred = torch.zeros((segment.size, self.cfg.data.num_classes)).cuda()
                 for i in range(len(fragment_list)):
                     fragment_batch_size = 1
-                    s_i, e_i = i * fragment_batch_size, min(
-                        (i + 1) * fragment_batch_size, len(fragment_list)
+                    s_i, e_i = (
+                        i * fragment_batch_size,
+                        min((i + 1) * fragment_batch_size, len(fragment_list)),
                     )
                     input_dict = collate_fn(fragment_list[s_i:e_i])
                     for key in input_dict.keys():
@@ -334,6 +338,10 @@ class SemSegTester(TesterBase):
                     mIoU, mAcc, allAcc
                 )
             )
+            if hasattr(self, "writer") and self.writer is not None:
+                self.writer.add_scalar("test/mIoU", mIoU, 0)
+                self.writer.add_scalar("test/mAcc", mAcc, 0)
+                self.writer.add_scalar("test/allAcc", allAcc, 0)
             for i in range(self.cfg.data.num_classes):
                 logger.info(
                     "Class_{idx} - {name} Result: iou/accuracy {iou:.4f}/{accuracy:.4f}".format(
@@ -343,11 +351,54 @@ class SemSegTester(TesterBase):
                         accuracy=accuracy_class[i],
                     )
                 )
+                # if self.writer is not None:
+                #     self.writer.add_scalar(
+                #         f"test/IoU_{self.cfg.data.names[i]}", iou_class[i], 0
+                #     )
+                #     self.writer.add_scalar(
+                #         f"test/acc_{self.cfg.data.names[i]}", accuracy_class[i], 0
+                #     )
             logger.info("<<<<<<<<<<<<<<<<< End Evaluation <<<<<<<<<<<<<<<<<")
 
     @staticmethod
     def collate_fn(batch):
         return batch
+
+
+@TESTERS.register_module()
+class SemSegEnsembleTester(SemSegTester):
+    def build_model(self):
+        model = build_model(self.cfg.model)
+        model = create_ddp_model(
+            model.cuda(),
+            broadcast_buffers=False,
+            find_unused_parameters=self.cfg.find_unused_parameters,
+        )
+        for weight_path, sub_model in zip(
+            self.cfg.weights,
+            (model.module.models if comm.get_world_size() > 1 else model.models),
+        ):
+            n_parameters = sum(
+                p.numel() for p in sub_model.parameters() if p.requires_grad
+            )
+            self.logger.info(f"Num params: {n_parameters}")
+            if os.path.isfile(weight_path):
+                self.logger.info(f"Loading weight at: {weight_path}")
+                checkpoint = torch.load(weight_path)
+                weight = OrderedDict()
+                for key, value in checkpoint["state_dict"].items():
+                    if key.startswith("module."):
+                        key = key[7:]  # module.xxx.xxx -> xxx.xxx
+                    weight[key] = value
+                sub_model.load_state_dict(weight, strict=True)
+                self.logger.info(
+                    "=> Loaded weight '{}' (epoch {})".format(
+                        weight_path, checkpoint["epoch"]
+                    )
+                )
+            else:
+                raise RuntimeError("=> No checkpoint found at '{}'".format(weight_path))
+        return model
 
 
 @TESTERS.register_module()
@@ -375,17 +426,21 @@ class ClsTester(TesterBase):
                 pred, label, self.cfg.data.num_classes, self.cfg.data.ignore_index
             )
             if comm.get_world_size() > 1:
-                dist.all_reduce(intersection), dist.all_reduce(union), dist.all_reduce(
-                    target
+                (
+                    dist.all_reduce(intersection),
+                    dist.all_reduce(union),
+                    dist.all_reduce(target),
                 )
             intersection, union, target = (
                 intersection.cpu().numpy(),
                 union.cpu().numpy(),
                 target.cpu().numpy(),
             )
-            intersection_meter.update(intersection), union_meter.update(
-                union
-            ), target_meter.update(target)
+            (
+                intersection_meter.update(intersection),
+                union_meter.update(union),
+                target_meter.update(target),
+            )
 
             accuracy = sum(intersection_meter.val) / (sum(target_meter.val) + 1e-10)
             batch_time.update(time.time() - end)
@@ -571,8 +626,9 @@ class PartSegTester(TesterBase):
             pred = torch.zeros((label.size, self.cfg.data.num_classes)).cuda()
             batch_num = int(np.ceil(len(data_dict_list) / self.cfg.batch_size_test))
             for i in range(batch_num):
-                s_i, e_i = i * self.cfg.batch_size_test, min(
-                    (i + 1) * self.cfg.batch_size_test, len(data_dict_list)
+                s_i, e_i = (
+                    i * self.cfg.batch_size_test,
+                    min((i + 1) * self.cfg.batch_size_test, len(data_dict_list)),
                 )
                 input_dict = collate_fn(data_dict_list[s_i:e_i])
                 for key in input_dict.keys():

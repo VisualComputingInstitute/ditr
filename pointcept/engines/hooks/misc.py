@@ -5,27 +5,28 @@ Author: Xiaoyang Wu (xiaoyang.wu.cs@gmail.com)
 Please cite our work if the code is helpful to you.
 """
 
-import sys
 import glob
 import os
 import shutil
+import sys
 import time
+from collections import OrderedDict
+
 import torch
 import torch.utils.data
-from collections import OrderedDict
 
 if sys.version_info >= (3, 10):
     from collections.abc import Sequence
 else:
     from collections import Sequence
-from pointcept.utils.timer import Timer
-from pointcept.utils.comm import is_main_process, synchronize, get_world_size
-from pointcept.utils.cache import shared_dict
 import pointcept.utils.comm as comm
 from pointcept.engines.test import TESTERS
+from pointcept.utils.cache import shared_dict
+from pointcept.utils.comm import get_world_size, is_main_process, synchronize
+from pointcept.utils.timer import Timer
 
-from .default import HookBase
 from .builder import HOOKS
+from .default import HookBase
 
 
 @HOOKS.register_module()
@@ -174,7 +175,11 @@ class CheckpointSaver(HookBase):
             torch.save(
                 {
                     "epoch": self.trainer.epoch + 1,
-                    "state_dict": self.trainer.model.state_dict(),
+                    "state_dict": {
+                        k: v
+                        for k, v in self.trainer.model.state_dict().items()
+                        if "teacher" not in k
+                    },
                     "optimizer": self.trainer.optimizer.state_dict(),
                     "scheduler": self.trainer.scheduler.state_dict(),
                     "scaler": (
@@ -274,6 +279,7 @@ class PreciseEvaluator(HookBase):
             checkpoint = torch.load(best_path)
             state_dict = checkpoint["state_dict"]
             tester.model.load_state_dict(state_dict, strict=True)
+        tester.writer = self.trainer.writer
         tester.test()
 
 
@@ -332,7 +338,7 @@ class RuntimeProfiler(HookBase):
 
     def before_train(self):
         self.trainer.logger.info("Profiling runtime ...")
-        from torch.profiler import profile, record_function, ProfilerActivity
+        from torch.profiler import ProfilerActivity, profile, record_function
 
         for i, input_dict in enumerate(self.trainer.train_loader):
             if i == self.warm_up + 1:
@@ -414,9 +420,9 @@ class RuntimeProfilerV2(HookBase):
     def before_train(self):
         self.trainer.logger.info("Profiling runtime ...")
         from torch.profiler import (
+            ProfilerActivity,
             profile,
             record_function,
-            ProfilerActivity,
             schedule,
             tensorboard_trace_handler,
         )

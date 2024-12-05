@@ -5,17 +5,60 @@ Author: Xiaoyang Wu (xiaoyang.wu.cs@gmail.com)
 Please cite our work if the code is helpful to you.
 """
 
+from uuid import uuid4
+
 import numpy as np
+import pointops
 import torch
 import torch.distributed as dist
-import pointops
-from uuid import uuid4
+import torch.nn as nn
+import torch.optim as optim
 
 import pointcept.utils.comm as comm
 from pointcept.utils.misc import intersection_and_union_gpu
 
-from .default import HookBase
 from .builder import HOOKS
+from .default import HookBase
+
+
+@HOOKS.register_module()
+class LossEvaluator(HookBase):
+    def after_epoch(self):
+        if self.trainer.cfg.evaluate:
+            self.eval()
+
+    def eval(self):
+        self.trainer.logger.info(">>>>>>>>>>>>>>>> Start Evaluation >>>>>>>>>>>>>>>>")
+        self.trainer.model.eval()
+        for i, input_dict in enumerate(self.trainer.val_loader):
+            for key in input_dict.keys():
+                if isinstance(input_dict[key], torch.Tensor):
+                    input_dict[key] = input_dict[key].cuda(non_blocking=True)
+            with torch.no_grad():
+                output_dict = self.trainer.model(input_dict)
+            loss = output_dict["loss"]
+            if comm.get_world_size() > 1:
+                dist.all_reduce(loss, op=dist.ReduceOp.AVG)
+
+            self.trainer.storage.put_scalar("val_loss", loss.item())
+            self.trainer.logger.info(
+                "Test: [{iter}/{max_iter}] Loss {loss:.4f}".format(
+                    iter=i + 1, max_iter=len(self.trainer.val_loader), loss=loss.item()
+                )
+            )
+        loss_avg = self.trainer.storage.history("val_loss").avg
+        self.trainer.logger.info("Val result: loss {:.4f}".format(loss_avg))
+        current_epoch = self.trainer.epoch + 1
+        if self.trainer.writer is not None:
+            self.trainer.writer.add_scalar("val/loss", loss_avg, current_epoch)
+        self.trainer.logger.info("<<<<<<<<<<<<<<<<< End Evaluation <<<<<<<<<<<<<<<<<")
+        self.trainer.comm_info["current_metric_value"] = -loss_avg  # save for saver
+        self.trainer.comm_info["current_metric_name"] = "neg_loss"  # save for saver
+
+    def after_train(self):
+        self.trainer.logger.info(
+            "Best {}: {:.4f}".format("loss", -self.trainer.best_metric_value)
+        )
 
 
 @HOOKS.register_module()
@@ -44,8 +87,10 @@ class ClsEvaluator(HookBase):
                 self.trainer.cfg.data.ignore_index,
             )
             if comm.get_world_size() > 1:
-                dist.all_reduce(intersection), dist.all_reduce(union), dist.all_reduce(
-                    target
+                (
+                    dist.all_reduce(intersection),
+                    dist.all_reduce(union),
+                    dist.all_reduce(target),
                 )
             intersection, union, target = (
                 intersection.cpu().numpy(),
@@ -58,8 +103,7 @@ class ClsEvaluator(HookBase):
             self.trainer.storage.put_scalar("val_target", target)
             self.trainer.storage.put_scalar("val_loss", loss.item())
             self.trainer.logger.info(
-                "Test: [{iter}/{max_iter}] "
-                "Loss {loss:.4f} ".format(
+                "Test: [{iter}/{max_iter}] " "Loss {loss:.4f} ".format(
                     iter=i + 1, max_iter=len(self.trainer.val_loader), loss=loss.item()
                 )
             )
@@ -138,8 +182,10 @@ class SemSegEvaluator(HookBase):
                 self.trainer.cfg.data.ignore_index,
             )
             if comm.get_world_size() > 1:
-                dist.all_reduce(intersection), dist.all_reduce(union), dist.all_reduce(
-                    target
+                (
+                    dist.all_reduce(intersection),
+                    dist.all_reduce(union),
+                    dist.all_reduce(target),
                 )
             intersection, union, target = (
                 intersection.cpu().numpy(),
@@ -542,8 +588,7 @@ class InsSegEvaluator(HookBase):
 
             self.trainer.storage.put_scalar("val_loss", loss.item())
             self.trainer.logger.info(
-                "Test: [{iter}/{max_iter}] "
-                "Loss {loss:.4f} ".format(
+                "Test: [{iter}/{max_iter}] " "Loss {loss:.4f} ".format(
                     iter=i + 1, max_iter=len(self.trainer.val_loader), loss=loss.item()
                 )
             )

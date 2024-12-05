@@ -8,6 +8,7 @@ Please cite our work if the code is helpful to you.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from .builder import LOSSES
 
 
@@ -221,3 +222,38 @@ class DiceLoss(nn.Module):
                 total_loss += dice_loss
         loss = total_loss / num_classes
         return self.loss_weight * loss
+
+
+@LOSSES.register_module()
+class MSELoss(nn.Module):
+    def __init__(self, reduction="mean", loss_weight=1.0):
+        super(MSELoss, self).__init__()
+        self.loss_weight = loss_weight
+        self.loss = nn.MSELoss(reduction=reduction)
+
+    def forward(self, pred, target):
+        return self.loss(pred, target) * self.loss_weight
+
+
+@LOSSES.register_module()
+class CosineLoss(nn.Module):
+    def __init__(self, reduction="mean", loss_weight=1.0):
+        super(CosineLoss, self).__init__()
+        self.loss_weight = loss_weight
+        assert reduction == "mean"
+        self.sim = nn.CosineSimilarity()
+
+    def forward(self, pred, target):
+        assert len(pred.shape) == len(target.shape) == 2
+        return torch.mean(1 - self.sim(pred, target), dim=0) * self.loss_weight
+
+
+@LOSSES.register_module()
+class L1Loss(nn.Module):
+    def __init__(self, reduction="mean", loss_weight=1.0):
+        super(L1Loss, self).__init__()
+        self.loss_weight = loss_weight
+        self.loss = nn.L1Loss(reduction=reduction)
+
+    def forward(self, pred, target):
+        return self.loss(pred, target) * self.loss_weight

@@ -5,13 +5,14 @@ batch_size = 12  # bs: total bs in all gpus
 mix_prob = 0.8
 empty_cache = False
 enable_amp = True
+wandb_project = "semseg_scannet"
 
 # model settings
 model = dict(
     type="DefaultSegmentor",
     backbone=dict(
         type="SpUNet-v1m1",
-        in_channels=6,
+        in_channels=9,
         num_classes=20,
         channels=(32, 64, 128, 256, 256, 128, 96, 96),
         layers=(2, 3, 4, 6, 2, 2, 2, 2),
@@ -99,7 +100,7 @@ data = dict(
             dict(
                 type="Collect",
                 keys=("coord", "grid_coord", "segment"),
-                feat_keys=("color", "normal"),
+                feat_keys=("coord", "color", "normal"),
             ),
         ],
         test_mode=False,
@@ -124,7 +125,7 @@ data = dict(
             dict(
                 type="Collect",
                 keys=("coord", "grid_coord", "segment"),
-                feat_keys=("color", "normal"),
+                feat_keys=("coord", "color", "normal"),
             ),
         ],
         test_mode=False,
@@ -154,7 +155,7 @@ data = dict(
                 dict(
                     type="Collect",
                     keys=("coord", "grid_coord", "index"),
-                    feat_keys=("color", "normal"),
+                    feat_keys=("coord", "color", "normal"),
                 ),
             ],
             aug_transform=[

@@ -60,15 +60,15 @@ else
 fi
 
 echo "Loading config in:" $CONFIG_DIR
-#export PYTHONPATH=./$CODE_DIR
-export PYTHONPATH=./
+# export PYTHONPATH=./
+export PYTHONPATH=./$CODE_DIR
 echo "Running code in: $CODE_DIR"
 
 
 echo " =========> RUN TASK <========="
 
-#$PYTHON -u "$CODE_DIR"/tools/$TEST_CODE \
-$PYTHON -u tools/$TEST_CODE \
+# $PYTHON -u tools/$TEST_CODE \
+$PYTHON -u "$CODE_DIR"/tools/$TEST_CODE \
   --config-file "$CONFIG_DIR" \
   --num-gpus "$GPU" \
   --options save_path="$EXP_DIR" weight="${MODEL_DIR}"/"${WEIGHT}".pth

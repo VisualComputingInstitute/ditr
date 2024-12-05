@@ -5,6 +5,7 @@ test_only = False  # test process
 
 seed = None  # train process will init a random seed and record
 save_path = "exp/default"
+wandb_project = None  # disable wandb
 num_worker = 16  # total worker in all gpu
 batch_size = 16  # total batch size in all gpu
 batch_size_val = None  # auto adapt to bs 1 for each gpu
@@ -29,7 +30,7 @@ hooks = [
     dict(type="InformationWriter"),
     dict(type="SemSegEvaluator"),
     dict(type="CheckpointSaver", save_freq=None),
-    dict(type="PreciseEvaluator", test_last=False),
+    dict(type="PreciseEvaluator", test_last=False),  # slow
 ]
 
 # Trainer

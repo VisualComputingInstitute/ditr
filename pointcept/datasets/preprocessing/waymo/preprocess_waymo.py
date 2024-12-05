@@ -15,17 +15,17 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 import argparse
-import numpy as np
-import tensorflow.compat.v1 as tf
-from pathlib import Path
-from waymo_open_dataset.utils import frame_utils
-from waymo_open_dataset.utils import transform_utils
-from waymo_open_dataset.utils import range_image_utils
-from waymo_open_dataset import dataset_pb2 as open_dataset
 import glob
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor
 from itertools import repeat
+from pathlib import Path
+
+import imageio
+import numpy as np
+import tensorflow.compat.v1 as tf
+from waymo_open_dataset import dataset_pb2 as open_dataset
+from waymo_open_dataset.utils import frame_utils, range_image_utils, transform_utils
 
 
 def create_lidar(frame):
@@ -59,15 +59,27 @@ def create_lidar(frame):
     # 3d points in vehicle frame.
     points_all = np.concatenate(points, axis=0)
     points_all_ri2 = np.concatenate(points_ri2, axis=0)
-    # point labels.
-
     points_all = np.concatenate([points_all, points_all_ri2], axis=0)
 
-    velodyne = np.c_[points_all[:, 3:6], points_all[:, 1]]
+    velodyne = np.c_[points_all[:, 3:6], points_all[:, 1]]  # (N, 4)
     velodyne = velodyne.reshape((velodyne.shape[0] * velodyne.shape[1]))
 
+    cp_points_all = np.concatenate(cp_points, axis=0)
+    cp_points_all_ri2 = np.concatenate(cp_points_ri2, axis=0)
+    cp_points_all = np.concatenate([cp_points_all, cp_points_all_ri2], axis=0)
+
+    image_points = np.ones((cp_points_all.shape[0], 2), dtype=np.int16) * -1
+    image_visibility_masks = []
+    images = []
+    for image in sorted(frame.images, key=lambda i: i.name):
+        mask = cp_points_all[..., 0] == image.name
+        image_points[mask] = cp_points_all[mask, 1:3]
+        image_visibility_masks.append(mask)
+        images.append(tf.image.decode_jpeg(image.image).numpy())
+    image_visibility_masks = np.stack(image_visibility_masks, axis=1)  # (N, CAM)
+
     valid_masks = [valid_masks, valid_masks_ri2]
-    return velodyne, valid_masks
+    return velodyne, valid_masks, images, image_points, image_visibility_masks
 
 
 def create_label(frame):
@@ -278,7 +290,7 @@ def convert_range_image_to_point_cloud_labels(
     return point_labels
 
 
-def handle_process(file_path, output_root, test_frame_list):
+def handle_process(file_path, output_root, test_frame_list, with_camera=True):
     file = os.path.basename(file_path)
     split = os.path.basename(os.path.dirname(file_path))
     print(f"Parsing {split}/{file}")
@@ -303,7 +315,9 @@ def handle_process(file_path, output_root, test_frame_list):
         os.makedirs(save_path / timestamp, exist_ok=True)
 
         # extract frame pass above check
-        point_cloud, valid_masks = create_lidar(frame)
+        point_cloud, valid_masks, images, image_points, image_visibility_mask = (
+            create_lidar(frame)
+        )
         point_cloud = point_cloud.reshape(-1, 4)
         coord = point_cloud[:, :3]
         strength = np.tanh(point_cloud[:, -1].reshape([-1, 1]))
@@ -323,6 +337,18 @@ def handle_process(file_path, output_root, test_frame_list):
             # ignore TYPE_UNDEFINED, ignore_index 0 -> -1
             label = create_label(frame)[:, 1].reshape([-1]) - 1
             np.save(save_path / timestamp / "segment.npy", label)
+
+        if with_camera:
+            # save image
+            for i, image in enumerate(images):
+                imageio.imwrite(save_path / timestamp / f"image_{i}.jpg", image)
+
+            # save image points
+            np.save(save_path / timestamp / "image_coord.npy", image_points)
+            np.save(
+                save_path / timestamp / "image_mask.npy",
+                image_visibility_mask,
+            )
 
 
 if __name__ == "__main__":
@@ -356,7 +382,7 @@ if __name__ == "__main__":
     file_list = glob.glob(
         os.path.join(os.path.abspath(config.dataset_root), "*", "*.tfrecord")
     )
-    assert len(file_list) == 1150
+    assert len(file_list) == 1000
 
     # Create output directories
     for split in config.splits:

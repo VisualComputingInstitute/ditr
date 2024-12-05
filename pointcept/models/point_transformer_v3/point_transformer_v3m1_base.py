@@ -5,25 +5,28 @@ Author: Xiaoyang Wu (xiaoyang.wu.cs@gmail.com)
 Please cite our work if the code is helpful to you.
 """
 
-from functools import partial
-from addict import Dict
 import math
+from functools import partial
+
+import spconv.pytorch as spconv
 import torch
 import torch.nn as nn
-import spconv.pytorch as spconv
 import torch_scatter
-from timm.models.layers import DropPath
+from addict import Dict
+from timm.layers import DropPath
 
 try:
     import flash_attn
 except ImportError:
     flash_attn = None
 
-from pointcept.models.point_prompt_training import PDNorm
+from timm.layers import LayerScale
+
 from pointcept.models.builder import MODELS
+from pointcept.models.modules import PointModule, PointSequential
+from pointcept.models.point_prompt_training import PDNorm
 from pointcept.models.utils.misc import offset2bincount
 from pointcept.models.utils.structure import Point
-from pointcept.models.modules import PointModule, PointSequential
 
 
 class RPE(torch.nn.Module):
@@ -257,6 +260,7 @@ class Block(PointModule):
         mlp_ratio=4.0,
         qkv_bias=True,
         qk_scale=None,
+        init_values: float | None = None,
         attn_drop=0.0,
         proj_drop=0.0,
         drop_path=0.0,
@@ -301,6 +305,12 @@ class Block(PointModule):
             upcast_attention=upcast_attention,
             upcast_softmax=upcast_softmax,
         )
+        self.ls1 = PointSequential(
+            LayerScale(channels, init_values=init_values)
+            if init_values
+            else nn.Identity()
+        )
+
         self.norm2 = PointSequential(norm_layer(channels))
         self.mlp = PointSequential(
             MLP(
@@ -311,6 +321,12 @@ class Block(PointModule):
                 drop=proj_drop,
             )
         )
+        self.ls2 = PointSequential(
+            LayerScale(channels, init_values=init_values)
+            if init_values
+            else nn.Identity()
+        )
+
         self.drop_path = PointSequential(
             DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
         )
@@ -322,7 +338,7 @@ class Block(PointModule):
         shortcut = point.feat
         if self.pre_norm:
             point = self.norm1(point)
-        point = self.drop_path(self.attn(point))
+        point = self.drop_path(self.ls1(self.attn(point)))
         point.feat = shortcut + point.feat
         if not self.pre_norm:
             point = self.norm1(point)
@@ -330,7 +346,7 @@ class Block(PointModule):
         shortcut = point.feat
         if self.pre_norm:
             point = self.norm2(point)
-        point = self.drop_path(self.mlp(point))
+        point = self.drop_path(self.ls2(self.mlp(point)))
         point.feat = shortcut + point.feat
         if not self.pre_norm:
             point = self.norm2(point)
@@ -452,7 +468,7 @@ class SerializedUnpooling(PointModule):
         out_channels,
         norm_layer=None,
         act_layer=None,
-        traceable=False,  # record parent and cluster
+        traceable=True,  # record parent and cluster
     ):
         super().__init__()
         self.proj = PointSequential(nn.Linear(in_channels, out_channels))
@@ -473,12 +489,11 @@ class SerializedUnpooling(PointModule):
         assert "pooling_inverse" in point.keys()
         parent = point.pop("pooling_parent")
         inverse = point.pop("pooling_inverse")
+        if self.traceable:
+            parent["unpooling_parent"] = Point(point)
         point = self.proj(point)
         parent = self.proj_skip(parent)
         parent.feat = parent.feat + point.feat[inverse]
-
-        if self.traceable:
-            parent["unpooling_parent"] = point
         return parent
 
 
@@ -533,6 +548,7 @@ class PointTransformerV3(PointModule):
         mlp_ratio=4,
         qkv_bias=True,
         qk_scale=None,
+        init_values: float | None = None,  # LayerScale
         attn_drop=0.0,
         proj_drop=0.0,
         drop_path=0.3,
@@ -629,6 +645,7 @@ class PointTransformerV3(PointModule):
                         mlp_ratio=mlp_ratio,
                         qkv_bias=qkv_bias,
                         qk_scale=qk_scale,
+                        init_values=init_values,
                         attn_drop=attn_drop,
                         proj_drop=proj_drop,
                         drop_path=enc_drop_path_[i],
@@ -679,6 +696,7 @@ class PointTransformerV3(PointModule):
                             mlp_ratio=mlp_ratio,
                             qkv_bias=qkv_bias,
                             qk_scale=qk_scale,
+                            init_values=init_values,
                             attn_drop=attn_drop,
                             proj_drop=proj_drop,
                             drop_path=dec_drop_path_[i],

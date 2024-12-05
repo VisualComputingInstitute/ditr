@@ -5,6 +5,7 @@ batch_size = 12  # bs: total bs in all gpus
 mix_prob = 0.8
 empty_cache = False
 enable_amp = True
+wandb_project = "semseg_waymo"
 
 # model settings
 model = dict(

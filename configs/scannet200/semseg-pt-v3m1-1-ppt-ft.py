@@ -11,6 +11,7 @@ mix_prob = 0.8
 empty_cache = False
 enable_amp = True
 find_unused_parameters = True
+wandb_project = "semseg_scannet200"
 
 # model settings
 model = dict(
@@ -22,13 +23,13 @@ model = dict(
         in_channels=6,
         order=("z", "z-trans", "hilbert", "hilbert-trans"),
         stride=(2, 2, 2, 2),
-        enc_depths=(3, 3, 3, 6, 3),
-        enc_channels=(48, 96, 192, 384, 512),
-        enc_num_head=(3, 6, 12, 24, 32),
+        enc_depths=(2, 2, 2, 6, 2),
+        enc_channels=(32, 64, 128, 256, 512),
+        enc_num_head=(2, 4, 8, 16, 32),
         enc_patch_size=(1024, 1024, 1024, 1024, 1024),
-        dec_depths=(3, 3, 3, 3),
-        dec_channels=(64, 96, 192, 384),
-        dec_num_head=(4, 6, 12, 24),
+        dec_depths=(2, 2, 2, 2),
+        dec_channels=(64, 64, 128, 256),
+        dec_num_head=(4, 4, 8, 16),
         dec_patch_size=(1024, 1024, 1024, 1024),
         mlp_ratio=4,
         qkv_bias=True,

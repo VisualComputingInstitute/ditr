@@ -5,19 +5,20 @@ Author: Xiaoyang Wu (xiaoyang.wu.cs@gmail.com)
 Please cite our work if the code is helpful to you.
 """
 
-import os
 import glob
+import os
+from collections.abc import Sequence
+from copy import deepcopy
+
 import numpy as np
 import torch
-from copy import deepcopy
 from torch.utils.data import Dataset
-from collections.abc import Sequence
 
-from pointcept.utils.logger import get_root_logger
 from pointcept.utils.cache import shared_dict
+from pointcept.utils.logger import get_root_logger
 
 from .builder import DATASETS, build_dataset
-from .transform import Compose, TRANSFORMS
+from .transform import TRANSFORMS, Compose
 
 
 @DATASETS.register_module()
@@ -194,14 +195,15 @@ class ConcatDataset(Dataset):
         for i in range(len(self.datasets)):
             data_list.extend(
                 zip(
-                    np.ones(len(self.datasets[i])) * i, np.arange(len(self.datasets[i]))
+                    np.ones(len(self.datasets[i]), dtype=np.int32) * i,
+                    np.arange(len(self.datasets[i]), dtype=np.int32),
                 )
             )
         return data_list
 
     def get_data(self, idx):
         dataset_idx, data_idx = self.data_list[idx % len(self.data_list)]
-        return self.datasets[dataset_idx][data_idx]
+        return self.datasets[dataset_idx.item()][data_idx.item()]
 
     def get_data_name(self, idx):
         dataset_idx, data_idx = self.data_list[idx % len(self.data_list)]

@@ -5,7 +5,10 @@ Author: Xiaoyang Wu (xiaoyang.wu.cs@gmail.com)
 Please cite our work if the code is helpful to you.
 """
 
+import re
+
 import torch
+
 from pointcept.utils.logger import get_root_logger
 from pointcept.utils.registry import Registry
 
@@ -32,10 +35,13 @@ def build_optimizer(cfg, model, param_dicts=None):
                 param_group["weight_decay"] = param_dicts[i].weight_decay
             cfg.params.append(param_group)
 
+        for param_dict in param_dicts:
+            param_dict.regex = re.compile(param_dict.keyword)
+
         for n, p in model.named_parameters():
             flag = False
             for i in range(len(param_dicts)):
-                if param_dicts[i].keyword in n:
+                if param_dicts[i].regex.search(n):
                     cfg.params[i + 1]["names"].append(n)
                     cfg.params[i + 1]["params"].append(p)
                     flag = True

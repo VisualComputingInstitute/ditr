@@ -6,7 +6,11 @@ Please cite our work if the code is helpful to you.
 """
 
 import os
+
+import imageio.v3 as imageio
 import numpy as np
+
+from pointcept.datasets.utils import points2image
 
 from .builder import DATASETS
 from .defaults import DefaultDataset
@@ -14,10 +18,11 @@ from .defaults import DefaultDataset
 
 @DATASETS.register_module()
 class SemanticKITTIDataset(DefaultDataset):
-    def __init__(self, ignore_index=-1, **kwargs):
+    def __init__(self, ignore_index=-1, with_images=False, **kwargs):
         self.ignore_index = ignore_index
         self.learning_map = self.get_learning_map(ignore_index)
         self.learning_map_inv = self.get_learning_map_inv(ignore_index)
+        self.with_images = with_images
         super().__init__(ignore_index=ignore_index, **kwargs)
 
     def get_data_list(self):
@@ -45,6 +50,31 @@ class SemanticKITTIDataset(DefaultDataset):
             ]
         return data_list
 
+    @staticmethod
+    def parse_calib_txt(filename: str):
+        calib = {}
+        with open(filename) as calib_file:
+            for line in calib_file:
+                key, content = line.strip().split(":")
+                values = [float(v) for v in content.strip().split()]
+
+                pose = np.zeros((4, 4))
+                pose[0, 0:4] = values[0:4]
+                pose[1, 0:4] = values[4:8]
+                pose[2, 0:4] = values[8:12]
+                pose[3, 3] = 1.0
+
+                calib[key] = pose
+
+        velo2cam0 = calib["Tr"]
+        P2 = calib["P2"]
+
+        K = P2[:3, :3]
+        velo2cam2 = velo2cam0.copy()
+        velo2cam2[:3, 3] = velo2cam0[:3, 3] + P2[:3, 3] / P2.diagonal()[:3]
+
+        return velo2cam2, K
+
     def get_data(self, idx):
         data_path = self.data_list[idx % len(self.data_list)]
         with open(data_path, "rb") as b:
@@ -67,6 +97,31 @@ class SemanticKITTIDataset(DefaultDataset):
             segment=segment,
             name=self.get_data_name(idx),
         )
+
+        if self.with_images:
+            images = [
+                imageio.imread(
+                    data_path.replace(self.data_root, self.data_root + "_color")
+                    .replace("velodyne", "image_2")
+                    .replace(".bin", ".png")
+                )
+            ]
+            points2cam, K = self.parse_calib_txt(
+                os.path.join(
+                    data_path.split("velodyne")[0],
+                    "calib.txt",
+                )
+            )
+            points_image, visibility_mask = points2image(
+                coord, points2cam, K, images[-1].shape[:2]
+            )
+            image_coords = [points_image]
+            image_masks = [visibility_mask]
+
+            data_dict["image"] = np.stack(images, axis=0)  # (CAM, H, W, 3)
+            data_dict["image_coord"] = np.stack(image_coords, axis=1)  # (N, CAM, 2)
+            data_dict["image_mask"] = np.stack(image_masks, axis=1)  # (N, CAM)
+
         return data_dict
 
     def get_data_name(self, idx):

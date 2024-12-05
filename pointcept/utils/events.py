@@ -11,15 +11,15 @@ import datetime
 import json
 import logging
 import os
-import time
-import torch
-import numpy as np
-import traceback
 import sys
-
-from typing import List, Optional, Tuple
+import time
+import traceback
 from collections import defaultdict
 from contextlib import contextmanager
+from typing import List, Optional, Tuple
+
+import numpy as np
+import torch
 
 __all__ = [
     "get_event_storage",
@@ -597,7 +597,6 @@ class HistoryBuffer:
 
 
 class ExceptionWriter:
-
     def __init__(self):
         self.logger = logging.getLogger(__name__)
 
@@ -609,4 +608,7 @@ class ExceptionWriter:
             tb = traceback.format_exception(exc_type, exc_val, exc_tb)
             formatted_tb_str = "".join(tb)
             self.logger.error(formatted_tb_str)
-            sys.exit(1)  # This prevents double logging the error to the console
+            if not (
+                (gettrace := getattr(sys, "gettrace")) and gettrace()
+            ):  # if not in debugger
+                sys.exit(1)  # This prevents double logging the error to the console

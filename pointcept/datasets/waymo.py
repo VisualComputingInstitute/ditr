@@ -5,9 +5,13 @@ Author: Xiaoyang Wu (xiaoyang.wu.cs@gmail.com)
 Please cite our work if the code is helpful to you.
 """
 
-import os
-import numpy as np
 import glob
+import os
+
+import imageio.v3 as imageio
+import numpy as np
+import torch
+from einops import repeat
 
 from .builder import DATASETS
 from .defaults import DefaultDataset
@@ -15,11 +19,24 @@ from .defaults import DefaultDataset
 
 @DATASETS.register_module()
 class WaymoDataset(DefaultDataset):
+    VALID_ASSETS = [
+        "coord",
+        "color",
+        "normal",
+        "strength",
+        "segment",
+        "instance",
+        "pose",
+        "image_coord",
+        "image_mask",
+    ]
+
     def __init__(
         self,
         timestamp=(0,),
         reference_label=True,
         timing_embedding=False,
+        with_images=False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -34,6 +51,7 @@ class WaymoDataset(DefaultDataset):
             return_inverse=True,
         )
         self.sequence_offset = np.append(self.sequence_offset, len(self.data_list))
+        self.with_images = with_images
 
     def get_data_list(self):
         if isinstance(self.split, str):
@@ -51,7 +69,34 @@ class WaymoDataset(DefaultDataset):
         return coord
 
     def get_single_frame(self, idx):
-        return super().get_data(idx)
+        data_dict = super().get_data(idx)
+        if self.with_images:
+            data_dict["image_coord"] = repeat(
+                data_dict["image_coord"],
+                "n coord -> n cam coord",
+                cam=data_dict["image_mask"].shape[1],
+            )  # (N, CAM, 2)
+            images = []
+            for i in range(data_dict["image_mask"].shape[1]):
+                data_path = self.data_list[idx % len(self.data_list)]
+                image_path = os.path.join(data_path, f"image_{i}.jpg")
+                images.append(imageio.imread(image_path))
+
+                # some of the images are 1280x1920, some are 886x1920
+                # we crop the top part of the 1280x1920 images
+                H = images[-1].shape[0]
+                assert H in (1280, 886)
+                visible = data_dict["image_mask"][:, i]
+                if H == 1280:
+                    SKIP_IM_ROWS = 1280 - 886
+                    images[-1] = images[-1][SKIP_IM_ROWS:]
+                    data_dict["image_coord"][:, i, 1][visible] -= SKIP_IM_ROWS
+                    visible &= data_dict["image_coord"][:, i, 1] >= 0
+                data_dict["image_coord"][:, i][~visible] = -1
+                data_dict["image_mask"][:, i] = visible
+
+            data_dict["image"] = np.stack(images, axis=0)  # (CAM, H, W, 3)
+        return data_dict
 
     def get_data(self, idx):
         idx = idx % len(self.data_list)
