@@ -1,6 +1,6 @@
 # DINO in the Room: Leveraging 2D Foundation Models for 3D Segmentation (DITR)
 
-[[`Paper`](https://arxiv.org/abs/2503.18944)] [[`Project Page`](http://vision.rwth-aachen.de/ditr)] [[`Weights & Logs`](https://huggingface.co/rwthvision/ditr)] [[`BibTeX`](#-Citation)]
+[[`Paper`](https://arxiv.org/abs/2503.18944)] [[`Project Page`](http://vision.rwth-aachen.de/ditr)] [[`Weights`](https://huggingface.co/rwthvision/ditr/tree/main)] [[`Logs`](https://huggingface.co/rwthvision/ditr/tensorboard)] [[`BibTeX`](#-Citation)]
 
 ## 📢 News
 
