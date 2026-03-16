@@ -54,31 +54,30 @@ sh scripts/train.sh -g 2 -d nuscenes -n $EXPERIMENT_NAME -c semseg-pt-v3m1-0-bas
 ### DITR (injected)
 | 3D Backbone | Image Backbone | Dataset | Val mIoU | Exp Dir |
 | --- | --- | --- | --- | --- |
-| PTv3 | DINOv2 ViT-L | ScanNet | 80.5 | [uploading...](https://huggingface.co/rwthvision/ditr)
-| PTv3 | DINOv2 ViT-L | ScanNet200 | 41.2 | [uploading...](https://huggingface.co/rwthvision/ditr)
-| PTv3 | DINOv3 ViT-L | ScanNet200 | 42.3 | [uploading...](https://huggingface.co/rwthvision/ditr)
-| PTv3 | DINOv2 ViT-L | S3DIS | 74.1 | [uploading...](https://huggingface.co/rwthvision/ditr)
-| PTv3 | DINOv2 ViT-S | nuScenes | 82.8 | [uploading...](https://huggingface.co/rwthvision/ditr)
-| PTv3 | DINOv2 ViT-B | nuScenes | 83.0 | [uploading...](https://huggingface.co/rwthvision/ditr)
-| PTv3 | DINOv2 ViT-L | nuScenes | 83.1 | [uploading...](https://huggingface.co/rwthvision/ditr)
-| PTv3 | DINOv2 ViT-g | nuScenes | 84.2 | [uploading...](https://huggingface.co/rwthvision/ditr)
-| PTv3 | DINOv3 ViT-L | nuScenes | 83.9 | [uploading...](https://huggingface.co/rwthvision/ditr)
-| PTv3 | DINOv2 ViT-L | SemanticKITTI | 69.0 | [uploading...](https://huggingface.co/rwthvision/ditr)
-| PTv3 | DINOv2 ViT-g | Waymo | 73.3 | [uploading...](https://huggingface.co/rwthvision/ditr)
+| PTv3 | DINOv2 ViT-L | ScanNet | 80.5 | uploading...
+| PTv3 | DINOv2 ViT-L | ScanNet200 | 41.2 | uploading...
+| PTv3 | DINOv3 ViT-L | ScanNet200 | 42.3 | uploading...
+| PTv3 | DINOv2 ViT-L | S3DIS | 74.1 | uploading...
+| PTv3 | DINOv2 ViT-S | nuScenes | 82.8 | [link](https://huggingface.co/rwthvision/ditr/tree/main/nuscenes/semseg-ptv3_dino-S)
+| PTv3 | DINOv2 ViT-B | nuScenes | 83.0 | [link](https://huggingface.co/rwthvision/ditr/tree/main/nuscenes/semseg-ptv3_dino-B)
+| PTv3 | DINOv2 ViT-L | nuScenes | 83.1 | [link](https://huggingface.co/rwthvision/ditr/tree/main/nuscenes/semseg-ptv3_dino-L)
+| PTv3 | DINOv2 ViT-g | nuScenes | 84.2 | [link](https://huggingface.co/rwthvision/ditr/tree/main/nuscenes/semseg-ptv3_dino-g)
+| PTv3 | DINOv3 ViT-L | nuScenes | 83.9 | uploading...
+| PTv3 | DINOv2 ViT-L | SemanticKITTI | 69.0 | uploading...
 
 ### D-DITR (distilled)
 | 3D Backbone | Datasets | Exp Dir |
 | --- | --- | --- |
-| PTv3 | ScanNet | [uploading...](https://huggingface.co/rwthvision/ditr)
-| PTv3 | ScanNet + Structured3D | [uploading...](https://huggingface.co/rwthvision/ditr)
+| PTv3 | ScanNet | uploading...
+| PTv3 | ScanNet + Structured3D | uploading...
 
 ### D-DITR (distilled + fine-tuned)
 | 3D Backbone | Dataset | Val mIoU | Exp Dir |
 | --- | --- | --- | --- |
-| PTv3 | ScanNet | 79.2 | [uploading...](https://huggingface.co/rwthvision/ditr)
-| PTv3 | ScanNet200 | 37.7 | [uploading...](https://huggingface.co/rwthvision/ditr)
-| PTv3 | S3DIS | 75.0 | [uploading...](https://huggingface.co/rwthvision/ditr)
-| MinkUNet | ScanNet | 76.2 | [uploading...](https://huggingface.co/rwthvision/ditr)
+| PTv3 | ScanNet | 79.2 | uploading...
+| PTv3 | ScanNet200 | 37.7 | uploading...
+| PTv3 | S3DIS | 75.0 | uploading...
+| MinkUNet | ScanNet | 76.2 | uploading...
 
 ## Disclaimer
  
