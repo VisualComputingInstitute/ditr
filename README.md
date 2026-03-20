@@ -70,6 +70,7 @@ sh scripts/train.sh -g 2 -d nuscenes -n $EXPERIMENT_NAME -c semseg-pt-v3m1-0-bas
 | --- | --- | --- |
 | PTv3 | ScanNet | [link](https://huggingface.co/rwthvision/ditr/tree/main/scannet200/distill-ptv3_scannet200_dino-L)
 | PTv3 | ScanNet + Structured3D | [link](https://huggingface.co/rwthvision/ditr/tree/main/scannet200/distill-ptv3_scannet200%2Bstructured3d_dino-L)
+| PTv3 | nuScenes | [link](https://huggingface.co/rwthvision/ditr/tree/main/nuscenes/distill-ptv3_nuscenes_dino-L)
 
 ### D-DITR (distilled + fine-tuned)
 | 3D Backbone | Dataset | Val mIoU | Exp Dir |
@@ -78,6 +79,7 @@ sh scripts/train.sh -g 2 -d nuscenes -n $EXPERIMENT_NAME -c semseg-pt-v3m1-0-bas
 | PTv3 | ScanNet200 | 37.7 | [link](https://huggingface.co/rwthvision/ditr/tree/main/scannet200/semseg-ptv3_weight%3Ddistill-ptv3_scannet200%2Bstructured3d_dino-L)
 | PTv3 | S3DIS | 75.0 | uploading...
 | MinkUNet | ScanNet | 76.2 | uploading...
+| PTv3 | nuScenes | 80.9 | [link](https://huggingface.co/rwthvision/ditr/tree/main/nuscenes/semseg-ptv3_weight%3Ddistill-ptv3_nuscenes_dino-L)
 
 ## Disclaimer
  
