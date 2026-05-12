@@ -6,7 +6,8 @@ __pycache__
 *.so
 exp
 weights
-data
+data/*
+!data/.gitkeep
 log
 outputs/
 .vscode
