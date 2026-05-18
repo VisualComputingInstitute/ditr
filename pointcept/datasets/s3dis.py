@@ -10,7 +10,6 @@ import os
 
 import imageio.v3 as imageio
 import numpy as np
-import torch
 
 from pointcept.utils.cache import shared_dict
 
@@ -82,12 +81,12 @@ class S3DISDataset(DefaultDataset):
             image_masks = []
             area, room = name.split("-")
             image_path = f"data/s3dis_images/{area}/{room}/color/"
-            visibility_path = f"data/s3dis_visibility/{area}/{room}/visibility/"
+            visibility_path = f"data/s3dis_images/{area}/{room}/visibility/"
             all_masks = glob.glob(os.path.join(visibility_path, "*_mask.npy"))
             if len(all_masks) <= self.with_images:
                 selected_indices = np.arange(len(all_masks))
                 num_fill = self.with_images - len(all_masks)
-            elif self.split != ("Area_5"):
+            elif self.split != "Area_5":
                 selected_indices = np.random.choice(
                     len(all_masks), self.with_images, replace=False
                 )
@@ -96,7 +95,10 @@ class S3DISDataset(DefaultDataset):
                 selected_indices = [i * step for i in range(self.with_images)]
             selected_masks = [all_masks[i] for i in selected_indices]
             for mask_path in selected_masks:
-                image_masks.append(np.load(mask_path))
+                visible_idx = np.load(mask_path).astype(np.int64)
+                image_mask = np.zeros((n_point,), dtype=bool)
+                image_mask[visible_idx] = True
+                image_masks.append(image_mask)
 
                 img_name = os.path.basename(mask_path).replace("_mask.npy", ".png")
                 img_path = os.path.join(image_path, img_name)
