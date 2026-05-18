@@ -1,26 +1,40 @@
 from pathlib import Path
+import argparse
+
 import redivis
 from tqdm import tqdm
 
-# Output directory
-out_dir = Path("/work/yilmaz/")
-out_dir.mkdir(parents=True, exist_ok=True)
 
-table = redivis.table(
-    "sdss_data_repository.stanford_2d_3d_semantics_dataset_2d_3d_s:f304:v1_0.no_xyz:ct1f"
-)
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--output_path",
+        type=Path,
+        required=True,
+        help="Directory where files will be downloaded",
+    )
+    args = parser.parse_args()
 
-# List raw files from the file-index table
-files = table.list_files(max_results=None)
+    output_path = args.output_path
+    output_path.mkdir(parents=True, exist_ok=True)
 
-print(f"Found {len(files)} files")
+    table = redivis.table(
+        "sdss_data_repository.stanford_2d_3d_semantics_dataset_2d_3d_s:f304:v1_0.no_xyz:ct1f"
+    )
 
-for f in tqdm(files):
-    # Redivis stores original path/name in f.path / f.name
-    dst = out_dir / str(f.path)
-    dst.parent.mkdir(parents=True, exist_ok=True)
+    files = table.list_files(max_results=None)
 
-    if dst.exists():
-        continue
+    print(f"Found {len(files)} files")
 
-    f.download(str(dst))
+    for f in tqdm(files):
+        dst = output_path / str(f.path)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+
+        if dst.exists():
+            continue
+
+        f.download(str(dst))
+
+
+if __name__ == "__main__":
+    main()

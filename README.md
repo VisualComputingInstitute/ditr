@@ -29,6 +29,22 @@ python pointcept/datasets/preprocessing/scannet/prepare_2d_data/prepare_raw_data
  --output_path data/processed/scannet_images
 ```
 
+For S3DIS, run the command below that downloads the raw data from the [official website](https://sdss.redivis.com/datasets/9q3m-9w5pa1a2h). You will be redirected for authorization, after which the download should start:
+
+```bash
+# S3DIS_DIR: the directory of downloaded Stanford3dDataset_v1.2 dataset.
+# RAW_S3DIS_DIR: the directory of Stanford2d3dDataset_noXYZ dataset.
+uv run --no-project --python 3.12 --with redivis python pointcept/datasets/preprocessing/s3dis/download_images.py \
+ --output_path $RAW_S3DIS_DIR
+```
+Then, extract tar files into a folder and run the following command to preprocess the data for training:
+```bash
+python pointcept/datasets/preprocessing/s3dis/prepare_2d_data/prepare_raw_data.py \
+ --s3dis_root $S3DIS_DIR \
+ --raw_root $RAW_S3DIS_DIR \
+ --output_path data/s3dis_images
+```
+
 ## Train
 
 Refer to the [original README](https://github.com/Pointcept/Pointcept/blob/c4363c86e1e77325645d44bc8052b338031f1b30/README.md). The injection configs are generally named `semseg-pt-v3m1-0-image` and the distillation configs are named `distill-pt-v3m1-0-distill`.

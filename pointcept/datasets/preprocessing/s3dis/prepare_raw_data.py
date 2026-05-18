@@ -120,17 +120,19 @@ def main():
     parser.add_argument(
         "--s3dis_root",
         type=Path,
-        default=Path("/globalwork/data/Stanford3dDataset_v1.2"),
+        required=True,
+        help="Path to Stanford3dDataset_v1.2 dataset",
     )
     parser.add_argument(
         "--raw_root",
         type=Path,
-        default=Path("/nodes/anchorbrew/work/yilmaz/s3dis_no_xyz"),
+        required=True,
+        help="Path to Stanford2d3dDataset_noXYZ dataset",
     )
     parser.add_argument(
         "--output_path",
         type=Path,
-        default=Path("/globalwork/yilmaz/data/processed/s3dis_images_new"),
+        default=Path("data/s3dis_images"),
     )
     parser.add_argument(
         "--num_workers",
